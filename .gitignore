@@ -1,0 +1,16 @@
+### Python ###
+.idea/
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+*.sqlite3
+env/
+venv/
+
+### Project specific ###
+settings_local.py
+orders/shop/migrations/
+orders/static/
+orders/auth_api/migrations/
