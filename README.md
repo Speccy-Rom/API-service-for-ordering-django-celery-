@@ -49,7 +49,7 @@ Superuser created successfully.
 ```bash
 python manage.py runserver
 ```
-* Приложение будет доступно по адресу: `http://127.0.0.1:8000/`
+* Приложение будет доступно по адресу: http://127.0.0.1:8000/`
 * API также опубликовано на сервере POSTMAN:
 
     https://documenter.getpostman.com/view/8643249/SVtbQ5aJ
