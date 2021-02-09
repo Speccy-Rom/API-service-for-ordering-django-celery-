@@ -73,11 +73,11 @@ class Contact(models.Model):
                              on_delete=models.CASCADE)
     city = models.CharField(max_length=50, verbose_name='Город')
     street = models.CharField(max_length=100, verbose_name='Улица', blank=True)
-    house = models.CharField(max_length=15, verbose_name='Дом', blank=True)
+    house = models.CharField(max_length=35, verbose_name='Дом', blank=True)
     apartment = models.CharField(max_length=15, verbose_name='Квартира', blank=True)
     e_mail = models.EmailField(max_length=50, verbose_name='E-mail', blank=True)
-    phone = models.CharField(max_length=20, verbose_name='Телефон')
-    work_phone = models.CharField(max_length=20, verbose_name='Рабочий телефон', blank=True)
+    phone = models.CharField(max_length=35, verbose_name='Телефон')
+    work_phone = models.CharField(max_length=40, verbose_name='Рабочий телефон', blank=True)
 
     class Meta:
         verbose_name = 'Контакт пользователя'
