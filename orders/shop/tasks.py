@@ -11,8 +11,7 @@ from .models import Category, Parameter, ProductParameter, Product, Shop
 @app.task()
 def send_email(message: str, email: str, *args, **kwargs) -> str:
     title = 'Title'
-    email_list = list()
-    email_list.append(email)
+    email_list = [email]
     try:
         msg = EmailMultiAlternatives(subject=title, body=message, from_email=EMAIL_HOST_USER, to=email_list)
         msg.send()
