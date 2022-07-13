@@ -72,3 +72,5 @@ python manage.py runserver
 * API также опубликовано на сервере POSTMAN:
 
     https://documenter.getpostman.com/view/8643249/SVtbQ5aJ
+    
+    
