@@ -43,24 +43,20 @@ class RegisterAccount(APIView):
             try:
                 validate_password(request.data['password'])
             except Exception as password_error:
-                error_array = []
-                # noinspection PyTypeChecker
-                for item in password_error:
-                    error_array.append(item)
+                error_array = list(password_error)
                 return JsonResponse({'Status': False, 'Errors': {'password': error_array}})
             else:
                 # проверяем данные для уникальности имени пользователя
                 request.data.update({})
                 user_serializer = UserSerializer(data=request.data)
-                if user_serializer.is_valid():
-                    # сохраняем пользователя
-                    user = user_serializer.save()
-                    user.set_password(request.data['password'])
-                    user.save()
-                    return JsonResponse({'Status': True})
-                else:
+                if not user_serializer.is_valid():
                     return JsonResponse({'Status': False, 'Errors': user_serializer.errors})
 
+                # сохраняем пользователя
+                user = user_serializer.save()
+                user.set_password(request.data['password'])
+                user.save()
+                return JsonResponse({'Status': True})
         return JsonResponse({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'})
 
 
@@ -74,9 +70,9 @@ class ConfirmAccount(APIView):
         # проверяем обязательные аргументы
         if {'email', 'token'}.issubset(request.data):
 
-            token = ConfirmEmailToken.objects.filter(user__email=request.data['email'],
-                                                     key=request.data['token']).first()
-            if token:
+            if token := ConfirmEmailToken.objects.filter(
+                user__email=request.data['email'], key=request.data['token']
+            ).first():
                 token.user.is_active = True
                 token.user.save()
                 token.delete()
@@ -97,11 +93,10 @@ class LoginAccount(APIView):
         if {'email', 'password'}.issubset(request.data):
             user = authenticate(request, username=request.data['email'], password=request.data['password'])
 
-            if user is not None:
-                if user.is_active:
-                    token, _ = Token.objects.get_or_create(user=user)
+            if user is not None and user.is_active:
+                token, _ = Token.objects.get_or_create(user=user)
 
-                    return Response({'Status': True, 'Token': token.key})
+                return Response({'Status': True, 'Token': token.key})
 
             return Response({'Status': False, 'Errors': 'Не удалось авторизовать'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -139,11 +134,10 @@ class AccountDetails(APIView):
 
         # Проверяем остальные данные
         user_serializer = UserSerializer(request.user, data=request.data, partial=True)
-        if user_serializer.is_valid():
-            user_serializer.save()
-            return Response({'Status': True}, status=status.HTTP_201_CREATED)
-        else:
+        if not user_serializer.is_valid():
             return Response({'Status': False, 'Errors': user_serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        user_serializer.save()
+        return Response({'Status': True}, status=status.HTTP_201_CREATED)
 
 
 class CategoryView(viewsets.ModelViewSet):
@@ -185,13 +179,12 @@ class ProductInfoView(viewsets.ReadOnlyModelViewSet):
         if category_id:
             query = query & Q(product__category_id=category_id)
 
-        # фильтруем и отбрасываем дуликаты
-        queryset = ProductInfo.objects.filter(
-            query).select_related(
-            'shop', 'product__category').prefetch_related(
-            'product_parameters__parameter').distinct()
-
-        return queryset
+        return (
+            ProductInfo.objects.filter(query)
+            .select_related('shop', 'product__category')
+            .prefetch_related('product_parameters__parameter')
+            .distinct()
+        )
 
 
 class BasketView(APIView):
@@ -218,8 +211,7 @@ class BasketView(APIView):
         if not request.user.is_authenticated:
             return JsonResponse({'Status': False, 'Error': 'Log in required'}, status=status.HTTP_403_FORBIDDEN)
 
-        items_sting = request.data.get('items')
-        if items_sting:
+        if items_sting := request.data.get('items'):
             try:
                 items_dict = load_json(items_sting)
             except ValueError:
@@ -248,8 +240,7 @@ class BasketView(APIView):
         if not request.user.is_authenticated:
             return JsonResponse({'Status': False, 'Error': 'Log in required'}, status=status.HTTP_403_FORBIDDEN)
 
-        items_sting = request.data.get('items')
-        if items_sting:
+        if items_sting := request.data.get('items'):
             items_list = items_sting.split(',')
             basket, _ = Order.objects.get_or_create(user_id=request.user.id, state='basket')
             query = Q()
@@ -269,19 +260,21 @@ class BasketView(APIView):
         if not request.user.is_authenticated:
             return JsonResponse({'Status': False, 'Error': 'Log in required'}, status=status.HTTP_403_FORBIDDEN)
 
-        items_sting = request.data.get('items')
-        if items_sting:
+        if items_sting := request.data.get('items'):
             try:
                 items_dict = load_json(items_sting)
             except ValueError:
                 JsonResponse({'Status': False, 'Errors': 'Неверный формат запроса'})
             else:
                 basket, _ = Order.objects.get_or_create(user_id=request.user.id, state='basket')
-                objects_updated = 0
-                for order_item in items_dict:
-                    if type(order_item['id']) == int and type(order_item['quantity']) == int:
-                        objects_updated += OrderItem.objects.filter(order_id=basket.id, id=order_item['id']).update(
-                            quantity=order_item['quantity'])
+                objects_updated = sum(
+                    OrderItem.objects.filter(
+                        order_id=basket.id, id=order_item['id']
+                    ).update(quantity=order_item['quantity'])
+                    for order_item in items_dict
+                    if type(order_item['id']) == int
+                    and type(order_item['quantity']) == int
+                )
 
                 return JsonResponse({'Status': True, 'Обновлено объектов': objects_updated})
         return JsonResponse({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'})
@@ -322,9 +315,12 @@ class OrderView(APIView):
                                 status=status.HTTP_400_BAD_REQUEST)
             else:
                 if is_updated:
-                    request.user.email_user(f'Обновление статуса заказа',
-                                            'Заказ сформирован',
-                                            from_email=settings.EMAIL_HOST_USER)
+                    request.user.email_user(
+                        'Обновление статуса заказа',
+                        'Заказ сформирован',
+                        from_email=settings.EMAIL_HOST_USER,
+                    )
+
                     return Response({'Status': True})
 
         return Response({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'},
@@ -369,8 +365,7 @@ class ContactView(APIView):
         if not request.user.is_authenticated:
             return JsonResponse({'Status': False, 'Error': 'Log in required'}, status=status.HTTP_403_FORBIDDEN)
 
-        items_sting = request.data.get('items')
-        if items_sting:
+        if items_sting := request.data.get('items'):
             items_list = items_sting.split(',')
             query = Q()
             objects_deleted = False
@@ -389,17 +384,16 @@ class ContactView(APIView):
         if not request.user.is_authenticated:
             return JsonResponse({'Status': False, 'Error': 'Log in required'}, status=status.HTTP_403_FORBIDDEN)
 
-        if 'id' in request.data:
-            if request.data['id'].isdigit():
-                contact = Contact.objects.filter(id=request.data['id'], user_id=request.user.id).first()
-                print(contact)
-                if contact:
-                    serializer = ContactSerializer(contact, data=request.data, partial=True)
-                    if serializer.is_valid():
-                        serializer.save()
-                        return JsonResponse({'Status': True})
-                    else:
-                        JsonResponse({'Status': False, 'Errors': serializer.errors})
+        if 'id' in request.data and request.data['id'].isdigit():
+            contact = Contact.objects.filter(id=request.data['id'], user_id=request.user.id).first()
+            print(contact)
+            if contact:
+                serializer = ContactSerializer(contact, data=request.data, partial=True)
+                if serializer.is_valid():
+                    serializer.save()
+                    return JsonResponse({'Status': True})
+                else:
+                    JsonResponse({'Status': False, 'Errors': serializer.errors})
 
         return JsonResponse({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'})
 
@@ -454,8 +448,7 @@ class PartnerState(APIView):
         if request.user.type != 'shop':
             return Response({'Status': False, 'Error': 'Только для магазинов'}, status=status.HTTP_403_FORBIDDEN)
 
-        state = request.data.get('state')
-        if state:
+        if state := request.data.get('state'):
             try:
                 Shop.objects.filter(user_id=request.user.id).update(state=strtobool(state))
                 return Response({'Status': True})
@@ -478,8 +471,7 @@ class PartnerUpdate(APIView):
         if request.user.type != 'shop':
             return Response({'Status': False, 'Error': 'Только для магазинов'}, status=status.HTTP_403_FORBIDDEN)
 
-        file = request.FILES
-        if file:
+        if file := request.FILES:
             user_id = request.user.id
             import_shop_data(file, user_id)
 
